@@ -1,40 +1,65 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'fertilizer.dart';
 import 'models.dart';
 
 class StoreSnapshot {
-  static const schemaVersion = 1;
+  static const schemaVersion = 2;
 
   final List<FarmRecord> farms;
   final List<PlotRecord> plots;
   final List<MeasurementRound> rounds;
+  final List<CropRuleSet> ruleSets;
+  final FertilizerPrices prices;
 
   StoreSnapshot({
     required List<FarmRecord> farms,
     required List<PlotRecord> plots,
     required List<MeasurementRound> rounds,
+    List<CropRuleSet> ruleSets = const [],
+    this.prices = FertilizerPrices.zero,
   })  : farms = List.unmodifiable(farms),
         plots = List.unmodifiable(plots),
-        rounds = List.unmodifiable(rounds);
+        rounds = List.unmodifiable(rounds),
+        ruleSets = List.unmodifiable(ruleSets);
 
   const StoreSnapshot._empty()
       : farms = const [],
         plots = const [],
-        rounds = const [];
+        rounds = const [],
+        ruleSets = const [],
+        prices = FertilizerPrices.zero;
 
   factory StoreSnapshot.empty() => const StoreSnapshot._empty();
+
+  StoreSnapshot copyWith({
+    List<FarmRecord>? farms,
+    List<PlotRecord>? plots,
+    List<MeasurementRound>? rounds,
+    List<CropRuleSet>? ruleSets,
+    FertilizerPrices? prices,
+  }) =>
+      StoreSnapshot(
+        farms: farms ?? this.farms,
+        plots: plots ?? this.plots,
+        rounds: rounds ?? this.rounds,
+        ruleSets: ruleSets ?? this.ruleSets,
+        prices: prices ?? this.prices,
+      );
 
   Map<String, dynamic> toJson() => {
         'schemaVersion': schemaVersion,
         'farms': [for (final f in farms) f.toJson()],
         'plots': [for (final p in plots) p.toJson()],
         'rounds': [for (final r in rounds) r.toJson()],
+        'ruleSets': [for (final s in ruleSets) s.toJson()],
+        'prices': prices.toJson(),
       };
 
   factory StoreSnapshot.fromJson(Map<String, dynamic> j) {
     final v = j['schemaVersion'];
-    if (v != schemaVersion) {
+    if (v != 1 && v != 2) {
       throw FormatException('Unsupported schemaVersion: $v');
     }
     return StoreSnapshot(
@@ -48,6 +73,16 @@ class StoreSnapshot {
         for (final r in (j['rounds'] as List))
           MeasurementRound.fromJson(r as Map<String, dynamic>)
       ],
+      // v1 files (Phase 1) predate fertilizer data.
+      ruleSets: v == 1
+          ? const []
+          : [
+              for (final s in (j['ruleSets'] as List))
+                CropRuleSet.fromJson(s as Map<String, dynamic>)
+            ],
+      prices: v == 1
+          ? FertilizerPrices.zero
+          : FertilizerPrices.fromJson(j['prices'] as Map<String, dynamic>),
     );
   }
 }

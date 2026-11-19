@@ -7,6 +7,7 @@ import '../widgets/common.dart';
 import 'data_screens.dart';
 import 'device_screens.dart';
 import 'farm_screens.dart';
+import 'fertilizer_screens.dart';
 import 'main_tabs.dart';
 import 'measure_screens.dart';
 import 'onboarding_screens.dart';
@@ -71,6 +72,9 @@ class CatalogScreen extends StatelessWidget {
       _Entry('NEW-06', 'Device Maintenance', () => const MaintenanceScreen()),
       _Entry('NEW-07', 'Export Report', () => const ExportScreen()),
       _Entry('NEW-08', 'Expert Review', () => const ExpertReviewScreen()),
+      _Entry('NEW-09', 'Fertilizer Rules', () => const FertilizerRulesScreen()),
+      _Entry('NEW-10', 'Rule Set Editor', () => const RuleSetEditScreen()),
+      _Entry('NEW-11', 'Fertilizer Plan', () => const FertilizerScreen()),
     ],
   };
 

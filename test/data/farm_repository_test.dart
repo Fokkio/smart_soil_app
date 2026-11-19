@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smart_soil_app/data/farm_repository.dart';
+import 'package:smart_soil_app/data/fertilizer.dart';
 import 'package:smart_soil_app/data/farm_store.dart';
 import 'package:smart_soil_app/data/mock_data.dart';
 import 'package:smart_soil_app/data/seed.dart';
@@ -154,5 +155,144 @@ void main() {
 
   test('query lists are unmodifiable', () {
     expect(() => repo.farms.add(repo.farms.first), throwsUnsupportedError);
+  });
+
+  group('fertilizer rule sets', () {
+    final rules = CropRuleSet(
+      crop: 'มันสำปะหลัง',
+      source: 'ค่าทดสอบ',
+      confirmedBy: '',
+      confirmedAt: null,
+      rules: const [
+        NutrientRule(nutrient: Nutrient.n, lowBelow: 20, highFrom: 40, rateLow: 10, rateMedium: 6, rateHigh: 3),
+        NutrientRule(nutrient: Nutrient.p, lowBelow: 10, highFrom: 25, rateLow: 8, rateMedium: 4, rateHigh: 2),
+        NutrientRule(nutrient: Nutrient.k, lowBelow: 60, highFrom: 120, rateLow: 8, rateMedium: 5, rateHigh: 2),
+      ],
+    );
+    const crop = 'มันสำปะหลัง';
+
+    test('saving a confirmed rule set clears confirmation', () async {
+      await repo.saveRuleSet(rules);
+      await repo.confirmRuleSet(crop, '  ดร.ทดสอบ ');
+      expect(repo.ruleSetFor(crop)!.confirmedBy, 'ดร.ทดสอบ');
+      expect(repo.ruleSetFor(crop)!.confirmedAt, t);
+      await repo.saveRuleSet(repo.ruleSetFor(crop)!);
+      expect(repo.ruleSetFor(crop)!.isConfirmed, isFalse);
+      expect(repo.ruleSetFor(crop)!.confirmedBy, '');
+      expect(repo.ruleSetFor(crop)!.confirmedAt, isNull);
+    });
+
+    test('save trims crop/source, upserts, sorts, and is unmodifiable', () async {
+      await repo.saveRuleSet(rules.copyWith(crop: '  ข้าว ', source: ' x '));
+      await repo.saveRuleSet(rules);
+      await repo.saveRuleSet(rules.copyWith(source: 'ใหม่'));
+      expect(repo.ruleSets.map((r) => r.crop).toList(), ['ข้าว', crop]);
+      expect(repo.ruleSetFor('ข้าว')!.source, 'x');
+      expect(repo.ruleSetFor(crop)!.source, 'ใหม่');
+      expect(repo.ruleSetFor('ไม่มี'), isNull);
+      expect(() => repo.ruleSets.add(rules), throwsUnsupportedError);
+      expect(store.current!.ruleSets, hasLength(2));
+    });
+
+    test('empty rules list is allowed', () async {
+      await repo.saveRuleSet(rules.copyWith(rules: const []));
+      expect(repo.ruleSets, hasLength(1));
+    });
+
+    test('invalid rule is rejected with its Thai message and nothing changes', () async {
+      final bad = rules.copyWith(rules: const [
+        NutrientRule(nutrient: Nutrient.n, lowBelow: 50, highFrom: 40, rateLow: 1, rateMedium: 1, rateHigh: 1)
+      ]);
+      await expectLater(
+          repo.saveRuleSet(bad),
+          throwsA(isA<ArgumentError>()
+              .having((e) => e.message, 'message', contains('น้อยกว่า'))));
+      expect(repo.ruleSets, isEmpty);
+    });
+
+    test('blank crop and duplicate nutrient are rejected', () async {
+      await expectLater(
+          repo.saveRuleSet(rules.copyWith(crop: '   ')),
+          throwsA(isA<ArgumentError>()
+              .having((e) => e.message, 'message', 'กรุณาเลือกชนิดพืช')));
+      final n = rules.rules.first;
+      await expectLater(
+          repo.saveRuleSet(rules.copyWith(rules: [n, n])),
+          throwsA(isA<ArgumentError>()
+              .having((e) => e.message, 'message', 'ธาตุซ้ำในตาราง')));
+      expect(repo.ruleSets, isEmpty);
+    });
+
+    test('Phase 1 mutations keep rule sets and prices', () async {
+      await repo.saveRuleSet(rules);
+      await repo.setPrices(const FertilizerPrices(urea: 20));
+      await repo.addFarm(name: 'X');
+      await repo.addRound(plotId: SeedIds.plotC, points: [Mock.points.first]);
+      await repo.deletePlot(SeedIds.plotB);
+      expect(repo.ruleSets, hasLength(1));
+      expect(repo.prices.urea, 20);
+      expect(store.current!.ruleSets, hasLength(1));
+      expect(store.current!.prices.urea, 20);
+    });
+
+    test('all Phase 1 mutations preserve rule sets', () async {
+      await repo.saveRuleSet(rules);
+      await repo.updateFarm(repo.farm(SeedIds.farmMsu)!.copyWith(name: 'ก'));
+      await repo.updatePlot(repo.plot(SeedIds.plotA)!.copyWith(name: 'ข'));
+      await repo.setPlotArchived(SeedIds.plotA, true);
+      await repo.addPlot(
+          farmId: SeedIds.farmMsu,
+          name: 'p',
+          crop: 'c',
+          boundary: const [Offset(0, 0), Offset(1, 0), Offset(0, 1)]);
+      await repo.deleteFarm(SeedIds.farmLab);
+      expect(store.current!.ruleSets, hasLength(1));
+    });
+
+    test('confirm/delete unknown crop throw StateError', () async {
+      await expectLater(repo.confirmRuleSet('ไม่มี', 'ก'), throwsStateError);
+      await expectLater(repo.deleteRuleSet('ไม่มี'), throwsStateError);
+    });
+
+    test('blank expert name is rejected', () async {
+      await repo.saveRuleSet(rules);
+      await expectLater(
+          repo.confirmRuleSet(crop, '  '),
+          throwsA(isA<ArgumentError>()
+              .having((e) => e.message, 'message', 'กรุณาใส่ชื่อผู้เชี่ยวชาญ')));
+      expect(repo.ruleSetFor(crop)!.isConfirmed, isFalse);
+    });
+
+    test('deleteRuleSet removes it', () async {
+      await repo.saveRuleSet(rules);
+      await repo.deleteRuleSet(crop);
+      expect(repo.ruleSets, isEmpty);
+    });
+
+    test('negative, NaN or infinite price is rejected', () async {
+      for (final p in [
+        const FertilizerPrices(urea: -1),
+        const FertilizerPrices(tsp: double.nan),
+        const FertilizerPrices(mop: double.infinity),
+      ]) {
+        await expectLater(
+            repo.setPrices(p),
+            throwsA(isA<ArgumentError>()
+                .having((e) => e.message, 'message', 'ราคาต้องไม่ติดลบ')));
+      }
+      await repo.setPrices(const FertilizerPrices(urea: 1, tsp: 2, mop: 3));
+      expect(repo.prices.mop, 3);
+    });
+
+    test('rule-set changes notify and do not touch farm updatedAt', () async {
+      final before = repo.farm(SeedIds.farmMsu)!.updatedAt;
+      var notified = 0;
+      repo.addListener(() => notified++);
+      t = t.add(const Duration(hours: 1));
+      await repo.saveRuleSet(rules);
+      await repo.setPrices(const FertilizerPrices(urea: 5));
+      expect(notified, 2);
+      expect(repo.farm(SeedIds.farmMsu)!.updatedAt, before);
+    });
   });
 }

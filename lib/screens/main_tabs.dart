@@ -8,6 +8,7 @@ import 'catalog.dart';
 import 'data_screens.dart';
 import 'device_screens.dart';
 import 'farm_screens.dart';
+import 'fertilizer_screens.dart';
 import 'measure_screens.dart';
 import 'onboarding_screens.dart';
 import 'plan_screens.dart';
@@ -558,6 +559,7 @@ class MoreTab extends StatelessWidget {
           item(Icons.build_outlined, 'บำรุงรักษาอุปกรณ์', 'สอบเทียบครั้งถัดไปอีก 30 วัน', const MaintenanceScreen()),
           item(Icons.sensors, 'อุปกรณ์ของฉัน', 'ตัวอ่านค่าดิน #1 • เชื่อมต่ออยู่', const DeviceScreen()),
           const SectionHeader('รายงาน'),
+          item(Icons.science_outlined, 'ตารางอัตราปุ๋ย', 'ผู้เชี่ยวชาญกรอกและยืนยัน', const FertilizerRulesScreen(), tone: Tone.amber),
           item(Icons.verified_outlined, 'ทบทวนข้อสังเกต', 'รอผู้เชี่ยวชาญ 2 รายการ', const ExpertReviewScreen(), tone: Tone.amber),
           item(Icons.file_download_outlined, 'ส่งออกรายงาน', 'PDF / CSV ตรวจสอบย้อนกลับได้', const ExportScreen()),
           const SectionHeader('ระบบ'),

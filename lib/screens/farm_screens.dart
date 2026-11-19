@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../data/app_scope.dart';
+import '../data/farm_repository.dart';
 import '../data/mock_data.dart';
+import '../data/models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/plot_map.dart';
@@ -33,7 +36,24 @@ class _FarmListScreenState extends State<FarmListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final farms = Mock.farms.where((f) => f.name.contains(q)).toList();
+    final repo = AppScope.of(context);
+    final all = repo.farms;
+    if (all.isEmpty) {
+      return ScreenScaffold(
+        title: 'ฟาร์มของฉัน',
+        bell: true,
+        children: [
+          const InfoBox(tone: Tone.grey, title: 'ยังไม่มีฟาร์ม', body: 'เริ่มต้นด้วยการเพิ่มฟาร์มแรกของคุณ'),
+          const Gap(12),
+          OutlinedButton.icon(
+            onPressed: () => go(context, const CreateFarmScreen()),
+            icon: const Icon(Icons.add),
+            label: const Text('เพิ่มฟาร์ม'),
+          ),
+        ],
+      );
+    }
+    final farms = all.where((f) => f.name.contains(q)).toList();
     return ScreenScaffold(
       title: 'ฟาร์มของฉัน',
       bell: true,
@@ -44,43 +64,11 @@ class _FarmListScreenState extends State<FarmListScreen> {
         ),
         const Gap(12),
         Wrap(spacing: 8, runSpacing: 6, children: [
-          Pill('ทั้งหมด ${Mock.farms.length} ฟาร์ม', tone: Tone.grey),
+          Pill('ทั้งหมด ${all.length} ฟาร์ม', tone: Tone.grey),
           const Pill('ข้อมูลพร้อมใช้', tone: Tone.blue),
         ]),
         const SectionHeader('เลือกฟาร์ม', action: 'เรียงล่าสุด', top: 16),
-        for (final f in farms)
-          AppCard(
-            margin: const EdgeInsets.only(bottom: 10),
-            borderColor: f == Mock.farms.first ? AppColors.green : AppColors.line,
-            borderWidth: f == Mock.farms.first ? 1.5 : 1,
-            onTap: () => go(context, const PlotListScreen()),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    const IconCircle(Icons.agriculture_outlined),
-                    const Gap(12),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(f.name, style: TS.h3),
-                        const Gap(2),
-                        Text(f.caretaker, style: TS.small),
-                      ]),
-                    ),
-                    Pill(f.status == SoilStatus.normal ? 'ปกติ' : 'เฝ้าดู',
-                        tone: toneFor(f.status), icon: f.status == SoilStatus.normal ? Icons.check : Icons.priority_high),
-                  ],
-                ),
-                const Divider(height: 24),
-                Row(children: [
-                  Text('${f.plots} แปลง', style: TS.title),
-                  const Spacer(),
-                  const Text('ดูแปลง', style: TS.link),
-                  const Icon(Icons.chevron_right, color: AppColors.green),
-                ]),
-              ],
-            ),
-          ),
+        for (final f in farms) _farmCard(context, repo, f, highlighted: f.id == all.first.id),
         if (farms.isEmpty) const InfoBox(tone: Tone.grey, title: 'ไม่พบฟาร์มที่ค้นหา'),
         const SectionHeader('ทางลัดที่ใช้บ่อย'),
         Row(children: [
@@ -101,6 +89,43 @@ class _FarmListScreenState extends State<FarmListScreen> {
           ),
         ]),
       ],
+    );
+  }
+
+  Widget _farmCard(BuildContext context, FarmRepository repo, FarmRecord f, {required bool highlighted}) {
+    final status = repo.farmStatus(f.id);
+    final when = formatWhen(f.updatedAt, repo.clock());
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: 10),
+      borderColor: highlighted ? AppColors.green : AppColors.line,
+      borderWidth: highlighted ? 1.5 : 1,
+      onTap: () => go(context, const PlotListScreen()),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const IconCircle(Icons.agriculture_outlined),
+              const Gap(12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(f.name, style: TS.h3),
+                  const Gap(2),
+                  Text(f.caretaker.isEmpty ? when : 'ผู้ดูแล: ${f.caretaker} • $when', style: TS.small),
+                ]),
+              ),
+              Pill(status == SoilStatus.normal ? 'ปกติ' : 'เฝ้าดู',
+                  tone: toneFor(status), icon: status == SoilStatus.normal ? Icons.check : Icons.priority_high),
+            ],
+          ),
+          const Divider(height: 24),
+          Row(children: [
+            Text('${repo.plotsOf(f.id).length} แปลง', style: TS.title),
+            const Spacer(),
+            const Text('ดูแปลง', style: TS.link),
+            const Icon(Icons.chevron_right, color: AppColors.green),
+          ]),
+        ],
+      ),
     );
   }
 }
@@ -315,55 +340,139 @@ class _PlotDetailScreenState extends State<PlotDetailScreen> {
 // ---------------------------------------------------------------- FLOW-10 Create / edit farm
 
 class CreateFarmScreen extends StatefulWidget {
-  const CreateFarmScreen({super.key, this.editing = false});
-  final bool editing;
+  const CreateFarmScreen({super.key, this.farmId});
+  final String? farmId;
   @override
   State<CreateFarmScreen> createState() => _CreateFarmScreenState();
 }
 
 class _CreateFarmScreenState extends State<CreateFarmScreen> {
-  final name = TextEditingController(text: Mock.farmName);
-  String caretaker = 'เจ้าหน้าที่ฟาร์ม (ผู้ดูแลหลัก)';
-  String location = 'อ.กันทรวิชัย จ.มหาสารคาม';
+  static const _caretakerOptions = ['เจ้าหน้าที่ฟาร์ม (ผู้ดูแลหลัก)', 'ทีมโครงการ', 'นักวิจัย / นิสิต'];
+  static const _locationOptions = ['อ.กันทรวิชัย จ.มหาสารคาม', 'อ.เมือง จ.มหาสารคาม', 'ใช้ตำแหน่งปัจจุบัน'];
+
+  final name = TextEditingController();
+  final note = TextEditingController();
+  String caretaker = _caretakerOptions.first;
+  String location = _locationOptions.first;
   bool notify = true;
+  bool _loaded = false;
+  bool _saving = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loaded) return;
+    _loaded = true;
+    final id = widget.farmId;
+    if (id == null) return;
+    final f = AppScope.read(context).farm(id);
+    if (f == null) return;
+    name.text = f.name;
+    note.text = f.note;
+    caretaker = f.caretaker;
+    location = f.location;
+    notify = f.notify;
+  }
 
   @override
   void dispose() {
     name.dispose();
+    note.dispose();
     super.dispose();
+  }
+
+  List<String> _withExtra(List<String> options, String value) =>
+      value.isEmpty || options.contains(value) ? options : [value, ...options];
+
+  Future<void> _save() async {
+    final repo = AppScope.read(context);
+    final n = name.text.trim();
+    if (n.isEmpty) {
+      toast(context, 'กรุณาใส่ชื่อฟาร์ม');
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final id = widget.farmId;
+      if (id == null) {
+        await repo.addFarm(name: n, caretaker: caretaker, location: location, note: note.text.trim(), notify: notify);
+      } else {
+        final existing = repo.farm(id);
+        if (existing == null) throw StateError('Farm not found: $id');
+        await repo.updateFarm(existing.copyWith(
+            name: n, caretaker: caretaker, location: location, note: note.text.trim(), notify: notify));
+      }
+      if (!mounted) return;
+      backToShell(context, 'บันทึกฟาร์ม "$n" แล้ว');
+    } on ArgumentError {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      toast(context, 'กรุณาใส่ชื่อฟาร์ม');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      toast(context, 'บันทึกไม่สำเร็จ ลองอีกครั้ง');
+    }
+  }
+
+  Future<void> _delete() async {
+    final repo = AppScope.read(context);
+    final ok = await confirm(context, 'ลบฟาร์มนี้?', 'แปลงและประวัติการวัดทั้งหมดจะถูกลบถาวร', ok: 'ลบถาวร', danger: true);
+    if (!ok || !mounted) return;
+    try {
+      await repo.deleteFarm(widget.farmId!);
+      if (!mounted) return;
+      backToShell(context, 'ลบฟาร์มแล้ว');
+    } catch (_) {
+      if (!mounted) return;
+      toast(context, 'บันทึกไม่สำเร็จ ลองอีกครั้ง');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final editing = widget.farmId != null;
+    if (editing && AppScope.of(context).farm(widget.farmId!) == null) {
+      return const ScreenScaffold(
+        title: 'แก้ไขฟาร์ม',
+        children: [InfoBox(tone: Tone.grey, title: 'ไม่พบฟาร์มนี้')],
+      );
+    }
     return ScreenScaffold(
-      title: 'สร้าง / แก้ไขฟาร์ม',
+      title: editing ? 'แก้ไขฟาร์ม' : 'สร้างฟาร์ม',
       bottom: FilledButton(
-        onPressed: () => backToShell(context, 'บันทึกฟาร์ม "${name.text}" แล้ว'),
+        onPressed: _saving ? null : _save,
         child: const Text('บันทึกฟาร์ม'),
       ),
       children: [
-        const Align(alignment: Alignment.centerLeft, child: Pill('ใช้ฟอร์มเดียวกัน', tone: Tone.blue, small: true)),
-        const Gap(8),
         const Text('ข้อมูลฟาร์ม', style: TS.h1),
-        const Text('ใช้สร้างฟาร์มใหม่ หรือแก้ไขข้อมูลฟาร์มเดิม', style: TS.small),
+        Text(editing ? 'แก้ไขข้อมูลฟาร์มเดิม' : 'สร้างฟาร์มใหม่', style: TS.small),
         const FieldLabel('ชื่อฟาร์ม'),
-        TextField(controller: name, decoration: const InputDecoration(prefixIcon: Icon(Icons.eco_outlined))),
+        TextField(
+          key: const Key('farm-name'),
+          controller: name,
+          decoration: const InputDecoration(prefixIcon: Icon(Icons.eco_outlined)),
+        ),
         const FieldLabel('ผู้ดูแลพื้นที่'),
         PickerField(
           value: caretaker,
           icon: Icons.person_outline,
-          options: const ['เจ้าหน้าที่ฟาร์ม (ผู้ดูแลหลัก)', 'ทีมโครงการ', 'นักวิจัย / นิสิต'],
+          options: _withExtra(_caretakerOptions, caretaker),
           onChanged: (v) => setState(() => caretaker = v),
         ),
         const FieldLabel('ตำแหน่ง / พื้นที่'),
         PickerField(
           value: location,
           icon: Icons.place_outlined,
-          options: const ['อ.กันทรวิชัย จ.มหาสารคาม', 'อ.เมือง จ.มหาสารคาม', 'ใช้ตำแหน่งปัจจุบัน'],
+          options: _withExtra(_locationOptions, location),
           onChanged: (v) => setState(() => location = v),
         ),
         const FieldLabel('คำอธิบาย (ไม่บังคับ)'),
-        const TextField(maxLines: 2, decoration: InputDecoration(hintText: 'เช่น พื้นที่นำร่อง 1 แปลง สำหรับทดสอบต้นแบบ')),
+        TextField(
+          controller: note,
+          maxLines: 2,
+          decoration: const InputDecoration(hintText: 'เช่น พื้นที่นำร่อง 1 แปลง สำหรับทดสอบต้นแบบ'),
+        ),
         const Gap(14),
         ToggleCard(
           title: 'รับการแจ้งเตือนของฟาร์มนี้',
@@ -371,16 +480,12 @@ class _CreateFarmScreenState extends State<CreateFarmScreen> {
           value: notify,
           onChanged: (v) => setState(() => notify = v),
         ),
-        const FieldLabel('การจัดการข้อมูล'),
-        DangerButton(
-          label: 'ลบฟาร์ม…',
-          onPressed: () async {
-            final ok = await confirm(context, 'ลบฟาร์มนี้?', 'แปลงและประวัติการวัดทั้งหมดจะถูกลบถาวร', ok: 'ลบถาวร', danger: true);
-            if (ok && context.mounted) backToShell(context, 'ลบฟาร์มแล้ว (ตัวอย่าง)');
-          },
-        ),
-        const Gap(8),
-        const Text('การลบจะลบแปลงและประวัติการวัดทั้งหมด • ต้องยืนยันอีกครั้ง', style: TS.tiny, textAlign: TextAlign.center),
+        if (editing) ...[
+          const FieldLabel('การจัดการข้อมูล'),
+          DangerButton(label: 'ลบฟาร์ม…', onPressed: _delete),
+          const Gap(8),
+          const Text('การลบจะลบแปลงและประวัติการวัดทั้งหมด • ต้องยืนยันอีกครั้ง', style: TS.tiny, textAlign: TextAlign.center),
+        ],
       ],
     );
   }

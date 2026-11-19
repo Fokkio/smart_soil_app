@@ -92,6 +92,9 @@ class FileFarmStore implements FarmStore {
       return _quarantine();
     } on TypeError {
       return _quarantine();
+    } on ArgumentError {
+      // e.g. SoilStatus.values.byName with an unknown status name
+      return _quarantine();
     }
   }
 

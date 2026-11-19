@@ -81,6 +81,17 @@ void main() {
     expect(f.existsSync(), isFalse);
   });
 
+  test('unknown soil status name is treated as corrupt', () async {
+    final store = FileFarmStore(File('${dir.path}/s.json'));
+    await store.save(StoreSnapshot(farms: const [], plots: const [], rounds: [
+      MeasurementRound(id: 'r', plotId: 'p', takenAt: DateTime(2026), points: [Mock.points.first]),
+    ]));
+    final f = File('${dir.path}/s.json');
+    f.writeAsStringSync(f.readAsStringSync().replaceFirst('"normal"', '"bogus"'));
+    expect((await store.load())!.rounds, isEmpty);
+    expect(f.existsSync(), isFalse);
+  });
+
   test('unknown schemaVersion is treated as corrupt', () async {
     final f = File('${dir.path}/s.json')
       ..writeAsStringSync('{"schemaVersion":99,"farms":[],"plots":[],"rounds":[]}');

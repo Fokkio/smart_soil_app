@@ -43,9 +43,8 @@ class _FarmListScreenState extends State<FarmListScreen> {
           decoration: const InputDecoration(hintText: 'ค้นหาฟาร์ม', prefixIcon: Icon(Icons.search)),
         ),
         const Gap(12),
-        Row(children: [
+        Wrap(spacing: 8, runSpacing: 6, children: [
           Pill('ทั้งหมด ${Mock.farms.length} ฟาร์ม', tone: Tone.grey),
-          const Gap(8),
           const Pill('ข้อมูลพร้อมใช้', tone: Tone.blue),
         ]),
         const SectionHeader('เลือกฟาร์ม', action: 'เรียงล่าสุด', top: 16),

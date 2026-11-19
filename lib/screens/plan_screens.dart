@@ -175,7 +175,7 @@ class FieldNavScreen extends StatelessWidget {
           ]),
         ),
         const Gap(12),
-        Row(children: [
+        Wrap(children: [
           _legend(AppColors.green, 'วัดแล้ว', true),
           _legend(AppColors.blue, 'จุดถัดไป', true),
           _legend(AppColors.hint, 'ยังไม่วัด', false),

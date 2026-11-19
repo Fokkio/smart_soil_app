@@ -86,7 +86,7 @@ class LoadingStatesScreen extends StatelessWidget {
             const Row(children: [
               Icon(Icons.auto_awesome, color: AppColors.green, size: 20),
               Gap(8),
-              Text('AI กำลังวิเคราะห์ข้อมูลดิน', style: TS.h3),
+              Flexible(child: Text('AI กำลังวิเคราะห์ข้อมูลดิน', style: TS.h3, maxLines: 1, overflow: TextOverflow.ellipsis)),
             ]),
             const Text('อาจใช้เวลาเล็กน้อยหากมีหลายจุดตรวจ', style: TS.small),
             const Gap(12),

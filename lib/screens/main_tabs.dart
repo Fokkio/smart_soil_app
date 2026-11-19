@@ -132,13 +132,16 @@ class HomeTab extends StatelessWidget {
             subtitle: 'ฟาร์ม มมส. • แปลงนำร่อง',
             onTap: () => go(context, const FarmListScreen()),
           ),
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
             children: [
               GestureDetector(
                 onTap: () => go(context, const SyncScreen()),
                 child: const Pill('ออนไลน์ • ซิงก์แล้ว', icon: Icons.check),
               ),
-              const Spacer(),
               const Text('วัดล่าสุด ${Mock.lastMeasured}', style: TS.small),
             ],
           ),
@@ -273,7 +276,7 @@ class _SoilMapScreenState extends State<SoilMapScreen> {
             onTapMarker: (i) => go(context, PointDetailScreen(point: Mock.points[i])),
           ),
           const Gap(10),
-          Row(children: [
+          Wrap(children: [
             _legend(AppColors.green, 'ปกติ'),
             _legend(AppColors.amber, 'ควรเฝ้าดู'),
             _legend(AppColors.red, 'ควรตรวจก่อน'),
@@ -294,9 +297,8 @@ class _SoilMapScreenState extends State<SoilMapScreen> {
                 const Gap(2),
                 const Text('${Mock.plotName} • 12.4 ไร่', style: TS.small),
                 const Gap(10),
-                Row(children: [
+                Wrap(spacing: 8, runSpacing: 6, children: [
                   Pill(watch == 0 ? 'ปกติทั้งแปลง' : 'ควรเฝ้าดู $watch จุด', tone: watch == 0 ? Tone.green : Tone.amber),
-                  const Gap(8),
                   Pill('ชั้นข้อมูล: ${layers[layer]}', tone: Tone.grey),
                 ]),
                 const Gap(12),

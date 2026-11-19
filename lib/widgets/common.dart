@@ -88,7 +88,14 @@ class Pill extends StatelessWidget {
             Icon(icon, size: small ? 12 : 14, color: c.fg),
             const SizedBox(width: 4),
           ],
-          Text(text, style: TextStyle(fontSize: small ? 11 : 12, fontWeight: FontWeight.w600, color: c.fg)),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: small ? 11 : 12, fontWeight: FontWeight.w600, color: c.fg),
+            ),
+          ),
         ],
       ),
     );
@@ -568,7 +575,7 @@ class ToggleCard extends StatelessWidget {
               ],
             ),
           ),
-          Switch(value: value, onChanged: onChanged, activeColor: Colors.white, activeTrackColor: AppColors.green),
+          Switch(value: value, onChanged: onChanged, activeThumbColor: Colors.white, activeTrackColor: AppColors.green),
         ],
       ),
     );

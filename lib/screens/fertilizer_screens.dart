@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../data/app_scope.dart';
 import '../data/farm_repository.dart';
 import '../data/fertilizer.dart';
+import '../data/fertilizer_calc.dart';
+import '../data/seed.dart';
 import '../data/models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -419,4 +421,121 @@ class _ExpertNameDialogState extends State<_ExpertNameDialog> {
       ],
     );
   }
+}
+
+Tone _levelTone(NutrientLevel l) => switch (l) {
+      NutrientLevel.low => Tone.amber,
+      NutrientLevel.medium => Tone.green,
+      NutrientLevel.high => Tone.blue,
+    };
+
+/// Straight-fertilizer plan for one plot, from its latest round and the expert rule table.
+class FertilizerScreen extends StatelessWidget {
+  const FertilizerScreen({super.key, this.plotId});
+  final String? plotId;
+
+  @override
+  Widget build(BuildContext context) {
+    const title = 'ปุ๋ยที่ควรใส่';
+    final repo = AppScope.of(context);
+    final p = repo.plot(plotId ?? SeedIds.plotA);
+    const warning = InfoBox(
+      tone: Tone.amber,
+      title: 'N-P-K เป็นค่าประมาณ ยังไม่สอบเทียบ',
+      body: 'ใช้ประกอบการตัดสินใจเท่านั้น',
+    );
+    if (p == null) {
+      return const ScreenScaffold(title: title, children: [warning, InfoBox(tone: Tone.grey, title: 'ไม่พบแปลงนี้')]);
+    }
+    final now = repo.clock();
+    final round = repo.latestRound(p.id);
+    final rules = repo.ruleSetFor(p.crop);
+    final r = calculateFertilizer(rai: p.rai, round: round, rules: rules, prices: repo.prices);
+    return ScreenScaffold(
+      title: title,
+      children: [
+        warning,
+        AppCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(p.name, style: TS.h2),
+            Text('${p.crop} • ${p.rai.toStringAsFixed(1)} ไร่ (พื้นที่โดยประมาณ)', style: TS.small),
+            if (round != null) Text('ผลวัด ${formatWhen(round.takenAt, now)}', style: TS.small),
+          ]),
+        ),
+        const Gap(12),
+        if (r.issue == FertilizerIssue.noRound)
+          const InfoBox(tone: Tone.grey, title: 'ยังไม่มีผลการวัด', body: 'วัดดินในแปลงนี้ก่อนจึงจะคำนวณปุ๋ยได้')
+        else if (r.issue == FertilizerIssue.noRules) ...[
+          InfoBox(
+            tone: Tone.grey,
+            title: 'ยังไม่มีตารางอัตราปุ๋ยของ${p.crop}',
+            body: 'ผู้เชี่ยวชาญต้องกรอกและยืนยันตารางก่อน',
+            margin: const EdgeInsets.only(bottom: 10),
+          ),
+          OutlinedButton(
+            onPressed: () => go(context, const FertilizerRulesScreen()),
+            child: const Text('ไปที่ตารางอัตราปุ๋ย'),
+          ),
+        ] else ..._plan(rules!, r, now),
+      ],
+    );
+  }
+
+  List<Widget> _plan(CropRuleSet rules, FertilizerResult r, DateTime now) => [
+        if (r.confirmed)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Pill('ยืนยันโดย ${rules.confirmedBy}', tone: Tone.green),
+              if (rules.confirmedAt != null) ...[
+                const Gap(8),
+                Text(formatWhen(rules.confirmedAt!, now), style: TS.small),
+              ],
+            ]),
+          )
+        else
+          const InfoBox(tone: Tone.red, title: 'ตารางอัตราปุ๋ยยังไม่ผ่านการยืนยันจากผู้เชี่ยวชาญ'),
+        const Gap(6),
+        Text('แหล่งอ้างอิง: ${r.source.isEmpty ? '—' : r.source}', style: TS.small),
+        const SectionHeader('ธาตุอาหารในดิน'),
+        for (final n in r.nutrients)
+          AppCard(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${nutrientLabel(n.nutrient)} ${n.measured.toStringAsFixed(0)} mg/kg', style: TS.h3),
+                  const Gap(4),
+                  Align(alignment: Alignment.centerLeft, child: Pill(levelLabel(n.level), tone: _levelTone(n.level), small: true)),
+                ]),
+              ),
+              Text('${n.ratePerRai.toStringAsFixed(1)} กก./ไร่', style: TS.small),
+            ]),
+          ),
+        const SectionHeader('ปุ๋ยเดี่ยวที่ควรใส่'),
+        if (r.products.isEmpty)
+          const InfoBox(tone: Tone.grey, title: 'ไม่ต้องใส่ปุ๋ยเดี่ยวตามตารางนี้')
+        else
+          for (final pr in r.products)
+            AppCard(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: Row(children: [
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(pr.product.name, style: TS.h3),
+                    Text(
+                      '${pr.kgPerRai.toStringAsFixed(1)} กก./ไร่ • รวม ${pr.totalKg.toStringAsFixed(1)} กก.',
+                      style: TS.small,
+                    ),
+                  ]),
+                ),
+                Text(pr.cost == null ? '—' : '${pr.cost!.toStringAsFixed(0)} บาท', style: TS.small),
+              ]),
+            ),
+        const Gap(4),
+        Text(
+          r.totalCost == null ? 'ต้นทุนรวม —' : 'ต้นทุนรวม ${r.totalCost!.toStringAsFixed(0)} บาท',
+          style: TS.h3,
+        ),
+      ];
 }

@@ -74,6 +74,7 @@ class CatalogScreen extends StatelessWidget {
       _Entry('NEW-08', 'Expert Review', () => const ExpertReviewScreen()),
       _Entry('NEW-09', 'Fertilizer Rules', () => const FertilizerRulesScreen()),
       _Entry('NEW-10', 'Rule Set Editor', () => const RuleSetEditScreen()),
+      _Entry('NEW-11', 'Fertilizer Plan', () => const FertilizerScreen()),
     ],
   };
 

@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/plot_map.dart';
 import 'data_screens.dart';
+import 'fertilizer_screens.dart';
 import 'main_tabs.dart';
 
 Tone toneFor(SoilStatus s) => switch (s) {
@@ -341,7 +342,7 @@ class _PlotDetailScreenState extends State<PlotDetailScreen> {
 
   List<Widget> _tabBody(BuildContext context, FarmRepository repo, String plotId, int watch) {
     return switch (tab) {
-      0 => _overview(context, watch),
+      0 => _overview(context, plotId, watch),
       1 => [
           PlotMap(
             markers: soilMarkers(labels: true),
@@ -376,7 +377,7 @@ class _PlotDetailScreenState extends State<PlotDetailScreen> {
     ];
   }
 
-  List<Widget> _overview(BuildContext context, int watch) => [
+  List<Widget> _overview(BuildContext context, String plotId, int watch) => [
         AppCard(
           onTap: () => setState(() => tab = 1),
           child: Row(children: [
@@ -397,6 +398,12 @@ class _PlotDetailScreenState extends State<PlotDetailScreen> {
         ),
         const Gap(12),
         _aiCard(context),
+        const Gap(12),
+        OutlinedButton.icon(
+          onPressed: () => go(context, FertilizerScreen(plotId: plotId)),
+          icon: const Icon(Icons.science_outlined),
+          label: const Text('คำนวณปุ๋ย'),
+        ),
       ];
 
   Widget _aiCard(BuildContext context) => DarkCard(

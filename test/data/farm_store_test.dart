@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smart_soil_app/data/farm_store.dart';
+import 'package:smart_soil_app/data/fertilizer.dart';
 import 'package:smart_soil_app/data/mock_data.dart';
 import 'package:smart_soil_app/data/models.dart';
 
@@ -103,8 +105,64 @@ void main() {
         throwsFormatException);
     expect(
         () => StoreSnapshot.fromJson(
-            {'schemaVersion': 2, 'farms': [], 'plots': [], 'rounds': []}),
+            {'schemaVersion': 3, 'farms': [], 'plots': [], 'rounds': []}),
         throwsFormatException);
+  });
+
+  test('schemaVersion 1 file from Phase 1 loads without quarantine', () async {
+    final j = {
+      ...StoreSnapshot(farms: [farm('f1')], plots: const [], rounds: const []).toJson(),
+      'schemaVersion': 1,
+    }
+      ..remove('ruleSets')
+      ..remove('prices');
+    final f = File('${dir.path}/s.json')..writeAsStringSync(jsonEncode(j));
+    final snap = (await FileFarmStore(f).load())!;
+    expect(snap.farms.single.id, 'f1');
+    expect(snap.ruleSets, isEmpty);
+    expect(snap.prices.urea, 0);
+    expect(dir.listSync().where((e) => e.path.contains('.corrupt-')), isEmpty);
+  });
+
+  test('v2 snapshot round-trips rule sets and prices', () async {
+    final f = File('${dir.path}/s.json');
+    final store = FileFarmStore(f);
+    final snap = StoreSnapshot(
+      farms: const [],
+      plots: const [],
+      rounds: const [],
+      ruleSets: [
+        CropRuleSet(
+          crop: 'Rice',
+          source: 'test',
+          rules: const [
+            NutrientRule(
+                nutrient: Nutrient.n,
+                lowBelow: 20,
+                highFrom: 40,
+                rateLow: 10,
+                rateMedium: 6,
+                rateHigh: 3),
+          ],
+          confirmedBy: 'Tester',
+          confirmedAt: DateTime.utc(2026, 11, 19),
+        ),
+      ],
+      prices: const FertilizerPrices(urea: 20),
+    );
+    await store.save(snap);
+    expect(f.readAsStringSync(), contains('"schemaVersion":2'));
+    final back = (await store.load())!;
+    expect(back.toJson(), snap.toJson());
+    expect(back.prices.urea, 20);
+    expect(back.ruleSets.single.isConfirmed, isTrue);
+  });
+
+  test('v2 file missing ruleSets is treated as corrupt', () async {
+    final f = File('${dir.path}/s.json')
+      ..writeAsStringSync('{"schemaVersion":2,"farms":[],"plots":[],"rounds":[]}');
+    await FileFarmStore(f).load();
+    expect(dir.listSync().where((e) => e.path.contains('.corrupt-')), hasLength(1));
   });
 
   test('MemoryFarmStore keeps the last saved snapshot', () async {

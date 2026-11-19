@@ -111,6 +111,20 @@ void main() {
     expect(set.confirmedBy, 'ดร.สมชาย');
   });
 
+  testWidgets('unsaved edits block expert confirmation', (tester) async {
+    final repo = await seededRepo();
+    await repo.saveRuleSet(const CropRuleSet(
+        crop: 'มันสำปะหลัง', source: 'ทดสอบ', rules: [_rule], confirmedBy: ''));
+    tall(tester);
+    await tester.pumpWidget(wrap(repo, const RuleSetEditScreen(crop: 'มันสำปะหลัง')));
+    await tester.enterText(find.byKey(const Key('n-rateHigh')), '9');
+    await tester.tap(find.text('ยืนยันตาราง (ผู้เชี่ยวชาญ)'));
+    await tester.pump();
+    expect(find.text('บันทึกตารางก่อนยืนยัน'), findsOneWidget);
+    expect(find.byKey(const Key('expert-name')), findsNothing);
+    expect(repo.ruleSetFor('มันสำปะหลัง')!.isConfirmed, isFalse);
+  });
+
   testWidgets('edit mode pre-fills fields from the stored set', (tester) async {
     final repo = await seededRepo();
     await repo.saveRuleSet(const CropRuleSet(

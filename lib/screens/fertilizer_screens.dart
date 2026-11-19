@@ -162,6 +162,18 @@ class _RuleSetEditScreenState extends State<RuleSetEditScreen> {
   String? crop;
   bool _loaded = false;
   bool _saving = false;
+  bool _dirty = false;
+
+  void _markDirty() => _dirty = true;
+
+  @override
+  void initState() {
+    super.initState();
+    source.addListener(_markDirty);
+    for (final c in _c.values) {
+      c.addListener(_markDirty);
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -186,6 +198,7 @@ class _RuleSetEditScreenState extends State<RuleSetEditScreen> {
       final avail = _available(repo);
       crop = avail.isEmpty ? null : avail.first;
     }
+    _dirty = false;
   }
 
   @override
@@ -240,6 +253,10 @@ class _RuleSetEditScreenState extends State<RuleSetEditScreen> {
   }
 
   Future<void> _confirmByExpert() async {
+    if (_dirty) {
+      toast(context, 'บันทึกตารางก่อนยืนยัน');
+      return;
+    }
     final repo = AppScope.read(context);
     final cropName = crop;
     if (cropName == null) return;
@@ -286,7 +303,10 @@ class _RuleSetEditScreenState extends State<RuleSetEditScreen> {
           title: 'ใช้ธาตุ $label',
           subtitle: 'ปิดถ้าตารางไม่ได้กำหนดธาตุนี้',
           value: _on[n]!,
-          onChanged: (v) => setState(() => _on[n] = v),
+          onChanged: (v) => setState(() {
+            _on[n] = v;
+            _dirty = true;
+          }),
         ),
         if (_on[n]!)
           for (final f in _fieldKeys)

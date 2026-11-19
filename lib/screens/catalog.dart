@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/mock_data.dart';
+import '../data/seed.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'data_screens.dart';
@@ -47,7 +48,7 @@ class CatalogScreen extends StatelessWidget {
       _Entry('FLOW-08', 'AI ข้อสังเกต', () => const AiObservationScreen()),
       _Entry('FLOW-09', 'Compare', () => const CompareScreen()),
       _Entry('FLOW-10', 'Create / Edit Farm', () => const CreateFarmScreen()),
-      _Entry('FLOW-11', 'Edit Plot', () => EditPlotScreen(plot: Mock.plots.first)),
+      _Entry('FLOW-11', 'Edit Plot', () => const EditPlotScreen(plotId: SeedIds.plotA)),
       _Entry('FLOW-12', 'Onboarding / Welcome', () => const WelcomeScreen()),
       _Entry('FLOW-13', 'Login', () => const LoginScreen()),
       _Entry('FLOW-14', 'Choose Role', () => const ChooseRoleScreen()),

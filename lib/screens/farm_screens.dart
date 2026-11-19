@@ -4,6 +4,7 @@ import '../data/app_scope.dart';
 import '../data/farm_repository.dart';
 import '../data/mock_data.dart';
 import '../data/models.dart';
+import '../data/seed.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/plot_map.dart';
@@ -99,7 +100,7 @@ class _FarmListScreenState extends State<FarmListScreen> {
       margin: const EdgeInsets.only(bottom: 10),
       borderColor: highlighted ? AppColors.green : AppColors.line,
       borderWidth: highlighted ? 1.5 : 1,
-      onTap: () => go(context, const PlotListScreen()),
+      onTap: () => go(context, PlotListScreen(farmId: f.id)),
       child: Column(
         children: [
           Row(
@@ -132,8 +133,28 @@ class _FarmListScreenState extends State<FarmListScreen> {
 
 // ---------------------------------------------------------------- MAIN-03 Plot list
 
+const _cropOptions = ['มันสำปะหลัง', 'ข้าว', 'อ้อย', 'ข้าวโพด', 'อื่น ๆ'];
+
+List<String> _withExtra(List<String> options, String value) =>
+    value.isEmpty || options.contains(value) ? options : [value, ...options];
+
+/// Farm names for a picker; later duplicates get ' (2)', ' (3)' so each label maps to one index.
+List<String> _farmLabels(List<FarmRecord> farms) {
+  final seen = <String, int>{};
+  final out = <String>[];
+  for (final f in farms) {
+    final n = (seen[f.name] ?? 0) + 1;
+    seen[f.name] = n;
+    out.add(n == 1 ? f.name : '${f.name} ($n)');
+  }
+  return out;
+}
+
+String _statusText(SoilStatus s) => s == SoilStatus.normal ? 'ดินโดยรวมปกติ' : 'ควรเฝ้าดู';
+
 class PlotListScreen extends StatefulWidget {
-  const PlotListScreen({super.key});
+  const PlotListScreen({super.key, this.farmId});
+  final String? farmId;
   @override
   State<PlotListScreen> createState() => _PlotListScreenState();
 }
@@ -143,11 +164,24 @@ class _PlotListScreenState extends State<PlotListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final repo = AppScope.of(context);
+    final id = widget.farmId ?? (repo.farms.isEmpty ? null : repo.farms.first.id);
+    final farm = id == null ? null : repo.farm(id);
+    if (farm == null) {
+      return const ScreenScaffold(
+        title: 'แปลงในฟาร์ม',
+        bell: true,
+        children: [InfoBox(tone: Tone.grey, title: 'ไม่พบฟาร์มนี้')],
+      );
+    }
+    final now = repo.clock();
+    final plots = repo.plotsOf(farm.id);
+    final farmStatus = repo.farmStatus(farm.id);
     return ScreenScaffold(
       title: 'แปลงในฟาร์ม',
       bell: true,
       bottom: FilledButton.icon(
-        onPressed: () => go(context, const CreatePlotScreen()),
+        onPressed: () => go(context, CreatePlotScreen(farmId: farm.id)),
         icon: const Icon(Icons.add),
         label: const Text('เพิ่มแปลงใหม่'),
       ),
@@ -156,55 +190,73 @@ class _PlotListScreenState extends State<PlotListScreen> {
           child: Row(children: [
             const IconCircle(Icons.agriculture_outlined),
             const Gap(12),
-            const Expanded(
+            Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(Mock.farmName, style: TS.h3),
-                Text('3 แปลง • อัปเดตล่าสุดวันนี้ 14:32', style: TS.small),
+                Text(farm.name, style: TS.h3),
+                Text('${plots.length} แปลง • อัปเดตล่าสุด ${formatWhen(farm.updatedAt, now)}', style: TS.small),
               ]),
             ),
-            const Pill('ปกติ', icon: Icons.check),
+            Pill(farmStatus == SoilStatus.normal ? 'ปกติ' : 'เฝ้าดู',
+                tone: toneFor(farmStatus), icon: farmStatus == SoilStatus.normal ? Icons.check : Icons.priority_high),
+            IconButton(
+              tooltip: 'แก้ไขฟาร์ม',
+              onPressed: () => go(context, CreateFarmScreen(farmId: farm.id)),
+              icon: const Icon(Icons.edit_outlined),
+            ),
           ]),
         ),
         const Gap(12),
         Segmented(options: const ['การ์ด', 'ลิสต์'], selected: view, onChanged: (i) => setState(() => view = i)),
-        SectionHeader('แปลงทั้งหมด', action: '+ เพิ่มแปลง', onAction: () => go(context, const CreatePlotScreen()), top: 16),
-        for (final p in Mock.plots)
-          view == 0
-              ? AppCard(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.all(12),
-                  onTap: () => go(context, PlotDetailScreen(plot: p)),
-                  child: Row(children: [
-                    SizedBox(
-                      width: 72,
-                      child: PlotMap(
-                        height: 72,
-                        radius: 12,
-                        markers: [PlotMarker(const Offset(0.5, 0.5), kindForStatus(p.status))],
-                      ),
-                    ),
-                    const Gap(14),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(p.name, style: TS.h3),
-                        Text('พืช: ${p.crop}', style: TS.small),
-                        const Gap(6),
-                        Pill(p.status == SoilStatus.normal ? 'ดินโดยรวมปกติ' : 'ควรเฝ้าดู', tone: toneFor(p.status), small: true),
-                        const Gap(4),
-                        Text(p.lastChecked, style: TS.tiny),
-                      ]),
-                    ),
-                    Text('${p.rai} ไร่', style: TS.title),
-                  ]),
-                )
-              : ListRowCard(
-                  icon: Icons.crop_square,
-                  title: p.name,
-                  subtitle: '${p.crop} • ${p.rai} ไร่ • ${p.lastChecked}',
-                  tone: toneFor(p.status),
-                  onTap: () => go(context, PlotDetailScreen(plot: p)),
-                ),
+        SectionHeader('แปลงทั้งหมด',
+            action: '+ เพิ่มแปลง', onAction: () => go(context, CreatePlotScreen(farmId: farm.id)), top: 16),
+        if (plots.isEmpty) const InfoBox(tone: Tone.grey, title: 'ยังไม่มีแปลง', body: 'เริ่มต้นด้วยการเพิ่มแปลงแรก'),
+        for (final p in plots) _plotItem(context, repo, p, now),
       ],
+    );
+  }
+
+  Widget _plotItem(BuildContext context, FarmRepository repo, PlotRecord p, DateTime now) {
+    final status = repo.plotStatus(p.id);
+    final latest = repo.latestRound(p.id);
+    final checked = latest == null ? 'ยังไม่เคยวัด' : 'ตรวจล่าสุด ${formatWhen(latest.takenAt, now)}';
+    void open() => go(context, PlotDetailScreen(plotId: p.id));
+    if (view != 0) {
+      return ListRowCard(
+        icon: Icons.crop_square,
+        title: p.name,
+        subtitle: '${p.crop} • ${p.rai.toStringAsFixed(1)} ไร่ • $checked',
+        tone: toneFor(status),
+        onTap: open,
+      );
+    }
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      onTap: open,
+      child: Row(children: [
+        SizedBox(
+          width: 72,
+          child: PlotMap(
+            height: 72,
+            radius: 12,
+            polygon: p.boundary,
+            closed: p.boundary.length >= 3,
+            markers: [PlotMarker(const Offset(0.5, 0.5), kindForStatus(status))],
+          ),
+        ),
+        const Gap(14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(p.name, style: TS.h3),
+            Text('พืช: ${p.crop}', style: TS.small),
+            const Gap(6),
+            Pill(_statusText(status), tone: toneFor(status), small: true),
+            const Gap(4),
+            Text(checked, style: TS.tiny),
+          ]),
+        ),
+        Text('${p.rai.toStringAsFixed(1)} ไร่', style: TS.title),
+      ]),
     );
   }
 }
@@ -212,8 +264,8 @@ class _PlotListScreenState extends State<PlotListScreen> {
 // ---------------------------------------------------------------- FLOW-06 Plot detail
 
 class PlotDetailScreen extends StatefulWidget {
-  const PlotDetailScreen({super.key, this.plot = const Plot('แปลงมันสำปะหลัง A', 'มันสำปะหลัง', 12.4, SoilStatus.normal, '')});
-  final Plot plot;
+  const PlotDetailScreen({super.key, this.plotId});
+  final String? plotId;
   @override
   State<PlotDetailScreen> createState() => _PlotDetailScreenState();
 }
@@ -223,15 +275,29 @@ class _PlotDetailScreenState extends State<PlotDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final p = widget.plot;
-    final tabBody = _tabBody(context);
+    final repo = AppScope.of(context);
+    final p = repo.plot(widget.plotId ?? SeedIds.plotA);
+    if (p == null) {
+      return const ScreenScaffold(
+        title: 'รายละเอียดแปลง',
+        bell: true,
+        children: [InfoBox(tone: Tone.grey, title: 'ไม่พบแปลงนี้')],
+      );
+    }
+    final now = repo.clock();
+    final latest = repo.latestRound(p.id);
+    final status = repo.plotStatus(p.id);
+    final farmName = repo.farm(p.farmId)?.name ?? '';
+    final watch = latest?.watchCount ?? 0;
+    final moisture = latest?.avg((r) => r.moisture);
+    final ph = latest?.avg((r) => r.ph);
     return ScreenScaffold(
       title: 'รายละเอียดแปลง',
       bell: true,
       actions: [
         IconButton(
           tooltip: 'แก้ไขแปลง',
-          onPressed: () => go(context, EditPlotScreen(plot: p)),
+          onPressed: () => go(context, EditPlotScreen(plotId: p.id)),
           icon: const Icon(Icons.edit_outlined),
         ),
       ],
@@ -243,72 +309,88 @@ class _PlotDetailScreenState extends State<PlotDetailScreen> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(p.name, style: TS.h2),
-                Text('${Mock.farmName} • ${p.rai} ไร่ • ${p.crop}', style: TS.small),
+                Text('$farmName • ${p.rai.toStringAsFixed(1)} ไร่ • ${p.crop}', style: TS.small),
                 const Gap(8),
-                Pill(p.status == SoilStatus.normal ? 'ดินโดยรวมปกติ' : 'ควรเฝ้าดู', tone: toneFor(p.status), small: true),
+                Pill(_statusText(status), tone: toneFor(status), small: true),
               ]),
             ),
-            const Text('วันนี้ 14:32', style: TS.small),
+            if (latest != null) Text(formatWhen(latest.takenAt, now), style: TS.small),
           ]),
         ),
         const Gap(12),
-        const TwoCol(children: [
-          ValueTile(label: 'จุดวัดล่าสุด', value: '14 จุด'),
-          ValueTile(label: 'ความชื้นเฉลี่ย', value: '28%'),
-          ValueTile(label: 'pH เฉลี่ย', value: '6.2'),
-          ValueTile(label: 'จุดเฝ้าดู', value: '2 จุด'),
+        TwoCol(children: [
+          ValueTile(label: 'จุดวัดล่าสุด', value: latest == null ? '—' : '${latest.points.length} จุด'),
+          ValueTile(label: 'ความชื้นเฉลี่ย', value: moisture == null ? '—' : '${moisture.toStringAsFixed(0)}%'),
+          ValueTile(label: 'pH เฉลี่ย', value: ph == null ? '—' : ph.toStringAsFixed(1)),
+          ValueTile(label: 'จุดเฝ้าดู', value: latest == null ? '—' : '$watch จุด'),
         ]),
+        if (latest == null)
+          const InfoBox(
+            tone: Tone.grey,
+            title: 'ยังไม่มีผลการวัด',
+            body: 'เริ่มวัดดินในแปลงนี้เพื่อดูค่าเฉลี่ยและประวัติ',
+            margin: EdgeInsets.only(top: 12),
+          ),
         const Gap(4),
         Segmented(options: const ['ภาพรวม', 'แผนที่', 'AI', 'ประวัติ'], selected: tab, onChanged: (i) => setState(() => tab = i)),
         const Gap(14),
-        ...tabBody,
+        ..._tabBody(context, repo, p.id, watch),
       ],
     );
   }
 
-  List<Widget> _tabBody(BuildContext context) {
+  List<Widget> _tabBody(BuildContext context, FarmRepository repo, String plotId, int watch) {
     return switch (tab) {
-          0 => _overview(context),
-          1 => [
-              PlotMap(
-                markers: soilMarkers(labels: true),
-                zones: true,
-                height: 320,
-                onTapMarker: (i) => go(context, PointDetailScreen(point: Mock.points[i])),
-              ),
-              const Gap(8),
-              const Text('แตะจุดเพื่อดูรายละเอียด • โซนสีเป็นค่าประมาณ', style: TS.tiny),
-            ],
-          2 => [
-              _aiCard(context),
-              const Gap(12),
-              OutlinedButton(onPressed: () => go(context, const AiObservationScreen()), child: const Text('ดูข้อสังเกตทั้งหมด')),
-            ],
-          _ => [
-              for (final h in Mock.history)
-                ListRowCard(
-                  icon: Icons.history,
-                  title: '${h.date} ${h.time}',
-                  subtitle: h.summary,
-                  onTap: () => go(context, const CompareScreen()),
-                ),
-            ],
-        };
+      0 => _overview(context, watch),
+      1 => [
+          PlotMap(
+            markers: soilMarkers(labels: true),
+            zones: true,
+            height: 320,
+            onTapMarker: (i) => go(context, PointDetailScreen(point: Mock.points[i])),
+          ),
+          const Gap(8),
+          const Text('แตะจุดเพื่อดูรายละเอียด • โซนสีเป็นค่าประมาณ', style: TS.tiny),
+        ],
+      2 => [
+          _aiCard(context),
+          const Gap(12),
+          OutlinedButton(onPressed: () => go(context, const AiObservationScreen()), child: const Text('ดูข้อสังเกตทั้งหมด')),
+        ],
+      _ => _history(context, repo, plotId),
+    };
   }
 
-  List<Widget> _overview(BuildContext context) => [
+  List<Widget> _history(BuildContext context, FarmRepository repo, String plotId) {
+    final rounds = repo.roundsOf(plotId);
+    final now = repo.clock();
+    if (rounds.isEmpty) return const [InfoBox(tone: Tone.grey, title: 'ยังไม่มีประวัติการวัด')];
+    return [
+      for (final r in rounds)
+        ListRowCard(
+          icon: Icons.history,
+          title: formatWhen(r.takenAt, now),
+          subtitle: 'ตรวจครบ ${r.points.length} จุด • เฝ้าดู ${r.watchCount} จุด',
+          onTap: () => go(context, const CompareScreen()),
+        ),
+    ];
+  }
+
+  List<Widget> _overview(BuildContext context, int watch) => [
         AppCard(
           onTap: () => setState(() => tab = 1),
           child: Row(children: [
             SizedBox(width: 120, child: PlotMap(markers: soilMarkers(), height: 80, radius: 12)),
             const Gap(14),
-            const Expanded(
+            Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('ค่าส่วนใหญ่ปกติ', style: TS.h3),
-                Gap(4),
-                Text('! 2 จุดควรตรวจสอบเพิ่มเติม', style: TS.small),
-                Gap(6),
-                Text('ดู 2 จุดบนแผนที่ →', style: TS.link),
+                const Text('ค่าส่วนใหญ่ปกติ', style: TS.h3),
+                if (watch > 0) ...[
+                  const Gap(4),
+                  Text('! $watch จุดควรตรวจสอบเพิ่มเติม', style: TS.small),
+                  const Gap(6),
+                  Text('ดู $watch จุดบนแผนที่ →', style: TS.link),
+                ],
               ]),
             ),
           ]),
@@ -380,9 +462,6 @@ class _CreateFarmScreenState extends State<CreateFarmScreen> {
     note.dispose();
     super.dispose();
   }
-
-  List<String> _withExtra(List<String> options, String value) =>
-      value.isEmpty || options.contains(value) ? options : [value, ...options];
 
   Future<void> _save() async {
     final repo = AppScope.read(context);
@@ -494,53 +573,107 @@ class _CreateFarmScreenState extends State<CreateFarmScreen> {
 // ---------------------------------------------------------------- FLOW-04 Create plot
 
 class CreatePlotScreen extends StatefulWidget {
-  const CreatePlotScreen({super.key});
+  const CreatePlotScreen({super.key, this.farmId});
+  final String? farmId;
   @override
   State<CreatePlotScreen> createState() => _CreatePlotScreenState();
 }
 
 class _CreatePlotScreenState extends State<CreatePlotScreen> {
-  String farm = Mock.farmName;
-  String crop = 'มันสำปะหลัง';
-  final name = TextEditingController(text: 'แปลงมันสำปะหลัง D');
+  final name = TextEditingController();
+  final note = TextEditingController();
+  String crop = _cropOptions.first;
+  String? farmId;
+  bool _loaded = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loaded) return;
+    _loaded = true;
+    final farms = AppScope.read(context).farms;
+    if (farms.isEmpty) return;
+    final want = widget.farmId;
+    farmId = farms.any((f) => f.id == want) ? want : farms.first.id;
+  }
 
   @override
   void dispose() {
     name.dispose();
+    note.dispose();
     super.dispose();
+  }
+
+  void _next() {
+    final repo = AppScope.read(context);
+    final n = name.text.trim();
+    final fid = farmId;
+    if (n.isEmpty) {
+      toast(context, 'กรุณาใส่ชื่อแปลง');
+      return;
+    }
+    if (fid == null) return;
+    final c = crop;
+    final nt = note.text.trim();
+    go(
+      context,
+      DrawBoundaryScreen(
+        plotName: n,
+        initial: const [],
+        onSave: (pts) => repo.addPlot(farmId: fid, name: n, crop: c, boundary: pts, note: nt),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final farms = AppScope.of(context).farms;
+    final hasFarms = farms.isNotEmpty;
+    final labels = _farmLabels(farms);
+    final idx = farms.indexWhere((f) => f.id == farmId);
+    final selected = idx < 0 ? 0 : idx;
     return ScreenScaffold(
       title: 'เพิ่มแปลง',
       step: 'ขั้นที่ 1/2',
       bottom: FilledButton.icon(
-        onPressed: () => go(context, DrawBoundaryScreen(plotName: name.text)),
+        onPressed: hasFarms ? _next : null,
         icon: const Icon(Icons.add),
         label: const Text('ไปยังการวาดขอบเขต'),
       ),
       children: [
         const Text('ข้อมูลแปลง', style: TS.h1),
         const Text('ตั้งชื่อ เลือกฟาร์ม และชนิดพืช • แก้ไขภายหลังได้', style: TS.small),
-        const FieldLabel('เลือกฟาร์ม'),
-        PickerField(
-          value: farm,
-          icon: Icons.agriculture_outlined,
-          options: const [Mock.farmName, 'จุดสอบเทียบ (แล็บ)'],
-          onChanged: (v) => setState(() => farm = v),
-        ),
+        if (!hasFarms)
+          const InfoBox(
+            tone: Tone.amber,
+            title: 'ยังไม่มีฟาร์ม',
+            body: 'สร้างฟาร์มก่อนจึงจะเพิ่มแปลงได้',
+            margin: EdgeInsets.only(top: 16),
+          )
+        else ...[
+          const FieldLabel('เลือกฟาร์ม'),
+          PickerField(
+            value: labels[selected],
+            icon: Icons.agriculture_outlined,
+            options: labels,
+            onChanged: (v) => setState(() => farmId = farms[labels.indexOf(v)].id),
+          ),
+        ],
         const FieldLabel('ชื่อแปลง'),
-        TextField(controller: name),
+        TextField(key: const Key('plot-name'), controller: name),
         const FieldLabel('ชนิดพืช'),
         PickerField(
           value: crop,
           icon: Icons.eco_outlined,
-          options: const ['มันสำปะหลัง', 'ข้าว', 'อ้อย', 'ข้าวโพด', 'อื่น ๆ'],
+          options: _cropOptions,
           onChanged: (v) => setState(() => crop = v),
         ),
         const FieldLabel('หมายเหตุ (ไม่บังคับ)'),
-        const TextField(maxLines: 2, decoration: InputDecoration(hintText: 'เช่น พื้นที่ด้านตะวันตกของฟาร์ม')),
+        TextField(
+          controller: note,
+          maxLines: 2,
+          decoration: const InputDecoration(hintText: 'เช่น พื้นที่ด้านตะวันตกของฟาร์ม'),
+        ),
         const InfoBox(
           tone: Tone.green,
           icon: Icons.pentagon_outlined,
@@ -556,14 +689,46 @@ class _CreatePlotScreenState extends State<CreatePlotScreen> {
 // ---------------------------------------------------------------- FLOW-05 Draw boundary
 
 class DrawBoundaryScreen extends StatefulWidget {
-  const DrawBoundaryScreen({super.key, this.plotName = 'แปลงใหม่'});
+  const DrawBoundaryScreen({super.key, this.plotName = 'แปลงใหม่', this.initial, this.onSave, this.successMessage});
   final String plotName;
+  final List<Offset>? initial;
+  final Future<void> Function(List<Offset> points)? onSave;
+  final String? successMessage;
   @override
   State<DrawBoundaryScreen> createState() => _DrawBoundaryScreenState();
 }
 
 class _DrawBoundaryScreenState extends State<DrawBoundaryScreen> {
-  late List<Offset> pts = List.of(Mock.polygon);
+  late List<Offset> pts = List.of(widget.initial ?? Mock.polygon);
+  bool _saving = false;
+
+  Future<void> _use() async {
+    final rai = Mock.areaRai(pts);
+    final defaultMsg = 'บันทึก ${widget.plotName} (${rai.toStringAsFixed(1)} ไร่) แล้ว';
+    final onSave = widget.onSave;
+    if (onSave == null) {
+      backToShell(context, defaultMsg);
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await onSave(List.of(pts));
+      if (!mounted) return;
+      final custom = widget.successMessage;
+      if (custom == null) {
+        backToShell(context, defaultMsg);
+      } else {
+        // Editing an existing plot: go back to the edit form rather than the shell.
+        final messenger = ScaffoldMessenger.of(context);
+        Navigator.pop(context);
+        messenger.showSnackBar(SnackBar(content: Text(custom)));
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      toast(context, 'บันทึกไม่สำเร็จ ลองอีกครั้ง');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -572,7 +737,7 @@ class _DrawBoundaryScreenState extends State<DrawBoundaryScreen> {
       title: 'วาดขอบเขตแปลง',
       step: 'ขั้นที่ 2/2',
       bottom: FilledButton.icon(
-        onPressed: pts.length < 3 ? null : () => backToShell(context, 'บันทึก ${widget.plotName} (${rai.toStringAsFixed(1)} ไร่) แล้ว'),
+        onPressed: pts.length < 3 || _saving ? null : _use,
         icon: const Icon(Icons.check),
         label: const Text('ใช้ขอบเขตนี้'),
       ),
@@ -621,16 +786,32 @@ class _DrawBoundaryScreenState extends State<DrawBoundaryScreen> {
 // ---------------------------------------------------------------- FLOW-11 Edit plot
 
 class EditPlotScreen extends StatefulWidget {
-  const EditPlotScreen({super.key, required this.plot});
-  final Plot plot;
+  const EditPlotScreen({super.key, required this.plotId});
+  final String plotId;
   @override
   State<EditPlotScreen> createState() => _EditPlotScreenState();
 }
 
 class _EditPlotScreenState extends State<EditPlotScreen> {
-  late final name = TextEditingController(text: widget.plot.name);
-  late String crop = widget.plot.crop;
+  final name = TextEditingController();
+  String crop = _cropOptions.first;
+  String farmId = '';
   bool visible = true;
+  bool _loaded = false;
+  bool _saving = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loaded) return;
+    _loaded = true;
+    final p = AppScope.read(context).plot(widget.plotId);
+    if (p == null) return;
+    name.text = p.name;
+    crop = p.crop;
+    farmId = p.farmId;
+    visible = !p.archived;
+  }
 
   @override
   void dispose() {
@@ -638,29 +819,97 @@ class _EditPlotScreenState extends State<EditPlotScreen> {
     super.dispose();
   }
 
+  Future<void> _save() async {
+    final repo = AppScope.read(context);
+    final n = name.text.trim();
+    if (n.isEmpty) {
+      toast(context, 'กรุณาใส่ชื่อแปลง');
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final existing = repo.plot(widget.plotId);
+      if (existing == null) throw StateError('Plot not found: ${widget.plotId}');
+      await repo.updatePlot(existing.copyWith(farmId: farmId, name: n, crop: crop, archived: !visible));
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.pop(context);
+      messenger.showSnackBar(const SnackBar(content: Text('บันทึกการแก้ไขแล้ว')));
+    } on ArgumentError {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      toast(context, 'กรุณาใส่ชื่อแปลง');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      toast(context, 'บันทึกไม่สำเร็จ ลองอีกครั้ง');
+    }
+  }
+
+  Future<void> _archive() async {
+    final repo = AppScope.read(context);
+    final ok = await confirm(context, 'เก็บแปลงถาวร?', 'แปลงจะถูกซ่อน แต่ข้อมูลเดิมยังอยู่ และกู้คืนได้');
+    if (!ok || !mounted) return;
+    try {
+      await repo.setPlotArchived(widget.plotId, true);
+      if (!mounted) return;
+      backToShell(context, 'เก็บแปลงถาวรแล้ว');
+    } catch (_) {
+      if (!mounted) return;
+      toast(context, 'บันทึกไม่สำเร็จ ลองอีกครั้ง');
+    }
+  }
+
+  Future<void> _delete() async {
+    final repo = AppScope.read(context);
+    final ok = await confirm(context, 'ลบแปลงถาวร?', 'ข้อมูลการวัดของแปลงนี้จะหายถาวร', ok: 'ลบถาวร', danger: true);
+    if (!ok || !mounted) return;
+    try {
+      await repo.deletePlot(widget.plotId);
+      if (!mounted) return;
+      backToShell(context, 'ลบแปลงแล้ว');
+    } catch (_) {
+      if (!mounted) return;
+      toast(context, 'บันทึกไม่สำเร็จ ลองอีกครั้ง');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final repo = AppScope.of(context);
+    final plot = repo.plot(widget.plotId);
+    if (plot == null) {
+      return const ScreenScaffold(
+        title: 'แก้ไขแปลง',
+        children: [InfoBox(tone: Tone.grey, title: 'ไม่พบแปลงนี้')],
+      );
+    }
+    final farms = repo.farms;
+    final labels = _farmLabels(farms);
+    final idx = farms.indexWhere((f) => f.id == farmId);
     return ScreenScaffold(
       title: 'แก้ไขแปลง',
       bottom: FilledButton(
-        onPressed: () {
-          Navigator.pop(context);
-          toast(context, 'บันทึกการแก้ไขแล้ว');
-        },
+        onPressed: _saving ? null : _save,
         child: const Text('บันทึกการแก้ไข'),
       ),
       children: [
-        Text(widget.plot.name, style: TS.h2),
+        Text(plot.name, style: TS.h2),
         const Text('ปรับข้อมูลแปลง ชนิดพืช และขอบเขตพื้นที่', style: TS.small),
         const FieldLabel('ชื่อแปลง'),
-        TextField(controller: name),
+        TextField(key: const Key('plot-name'), controller: name),
         const FieldLabel('ฟาร์มที่สังกัด'),
-        PickerField(value: Mock.farmName, icon: Icons.place_outlined, options: const [Mock.farmName], onChanged: (_) {}),
+        PickerField(
+          value: idx < 0 ? '' : labels[idx],
+          icon: Icons.place_outlined,
+          options: labels,
+          onChanged: (v) => setState(() => farmId = farms[labels.indexOf(v)].id),
+        ),
         const FieldLabel('ชนิดพืช'),
         PickerField(
           value: crop,
           icon: Icons.eco_outlined,
-          options: const ['มันสำปะหลัง', 'ข้าว', 'อ้อย', 'ข้าวโพด'],
+          options: _withExtra(_cropOptions, crop),
           onChanged: (v) => setState(() => crop = v),
         ),
         const Gap(14),
@@ -670,10 +919,26 @@ class _EditPlotScreenState extends State<EditPlotScreen> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const Text('พื้นที่และขอบเขต', style: TS.title),
-                Text('${widget.plot.rai} ไร่ • 6 จุดขอบเขต', style: TS.small),
+                Text('${plot.rai.toStringAsFixed(1)} ไร่ • ${plot.boundary.length} จุดขอบเขต', style: TS.small),
               ]),
             ),
-            TextButton(onPressed: () => go(context, DrawBoundaryScreen(plotName: name.text)), child: const Text('แก้ไขขอบเขต')),
+            TextButton(
+              onPressed: () => go(
+                context,
+                DrawBoundaryScreen(
+                  plotName: plot.name,
+                  initial: plot.boundary,
+                  // Re-read at save time so unsaved-form fields never clobber the stored plot.
+                  onSave: (pts) async {
+                    final latest = repo.plot(widget.plotId);
+                    if (latest == null) throw StateError('Plot not found: ${widget.plotId}');
+                    await repo.updatePlot(latest.copyWith(boundary: pts));
+                  },
+                  successMessage: 'บันทึกขอบเขตแล้ว',
+                ),
+              ),
+              child: const Text('แก้ไขขอบเขต'),
+            ),
           ]),
         ),
         const Gap(10),
@@ -690,24 +955,13 @@ class _EditPlotScreenState extends State<EditPlotScreen> {
         Row(children: [
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: () async {
-                final ok = await confirm(context, 'เก็บแปลงถาวร?', 'แปลงจะถูกซ่อน แต่ข้อมูลเดิมยังอยู่ และกู้คืนได้');
-                if (ok && context.mounted) backToShell(context, 'เก็บแปลงถาวรแล้ว');
-              },
+              onPressed: _archive,
               icon: const Icon(Icons.archive_outlined, size: 18),
               label: const Text('เก็บถาวร'),
             ),
           ),
           const Gap(10),
-          Expanded(
-            child: DangerButton(
-              label: 'ลบถาวร…',
-              onPressed: () async {
-                final ok = await confirm(context, 'ลบแปลงถาวร?', 'ข้อมูลการวัดของแปลงนี้จะหายถาวร', ok: 'ลบถาวร', danger: true);
-                if (ok && context.mounted) backToShell(context, 'ลบแปลงแล้ว (ตัวอย่าง)');
-              },
-            ),
-          ),
+          Expanded(child: DangerButton(label: 'ลบถาวร…', onPressed: _delete)),
         ]),
         const Gap(8),
         const Text('เก็บถาวร = ซ่อน ข้อมูลยังอยู่ • ลบ = หายถาวร', style: TS.tiny, textAlign: TextAlign.center),

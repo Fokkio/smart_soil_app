@@ -69,7 +69,7 @@ void main() {
     final snap = await FileFarmStore(f).load();
     expect(snap, isNotNull);
     expect(snap!.farms, isEmpty);
-    expect(f.existsSync(), isFalse);
+    expect((await FileFarmStore(f).load())!.farms, isEmpty); // empty store persisted: next launch is not a "first run"
     expect(dir.listSync().whereType<File>().where((e) => e.path.contains('.corrupt-')),
         hasLength(1));
   });
@@ -78,7 +78,7 @@ void main() {
     final f = File('${dir.path}/s.json')
       ..writeAsStringSync('{"schemaVersion":1,"farms":[{"id":5}],"plots":[],"rounds":[]}');
     expect((await FileFarmStore(f).load())!.farms, isEmpty);
-    expect(f.existsSync(), isFalse);
+    expect((await FileFarmStore(f).load())!.farms, isEmpty); // empty store persisted: next launch is not a "first run"
   });
 
   test('unknown soil status name is treated as corrupt', () async {
@@ -89,7 +89,7 @@ void main() {
     final f = File('${dir.path}/s.json');
     f.writeAsStringSync(f.readAsStringSync().replaceFirst('"normal"', '"bogus"'));
     expect((await store.load())!.rounds, isEmpty);
-    expect(f.existsSync(), isFalse);
+    expect((await FileFarmStore(f).load())!.farms, isEmpty); // empty store persisted: next launch is not a "first run"
   });
 
   test('unknown schemaVersion is treated as corrupt', () async {

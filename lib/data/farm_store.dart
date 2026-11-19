@@ -100,7 +100,11 @@ class FileFarmStore implements FarmStore {
 
   Future<StoreSnapshot> _quarantine() async {
     await file.rename('${file.path}.corrupt-${DateTime.now().millisecondsSinceEpoch}');
-    return StoreSnapshot.empty();
+    // Persist the empty state so the next launch doesn't look like a first run
+    // and re-seed demo data over the user's (recovered-empty) store.
+    final empty = StoreSnapshot.empty();
+    await save(empty);
+    return empty;
   }
 
   @override

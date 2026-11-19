@@ -14,7 +14,8 @@ void tall(WidgetTester tester) {
 
 Future<void> toggleOff(WidgetTester tester, Nutrient n) async {
   await tester.tap(find.descendant(
-    of: find.widgetWithText(ToggleCard, 'ใช้ธาตุ ${nutrientLabel(n)}'),
+    of: find.widgetWithText(ToggleCard,
+        n == Nutrient.n ? 'ใช้ธาตุ N' : 'ใช้ธาตุ ${soilLabel(n)} (อัตราเป็น ${nutrientLabel(n)})'),
     matching: find.byType(Switch),
   ));
   await tester.pump();

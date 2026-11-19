@@ -297,12 +297,16 @@ class _RuleSetEditScreenState extends State<RuleSetEditScreen> {
 
   Widget _nutrientSection(Nutrient n) {
     final label = nutrientLabel(n);
+    final soil = soilLabel(n);
+    // Thresholds compare the soil reading (element, mg/kg); rates are fertilizer (oxide, kg/rai).
+    String fieldLabel(String f) =>
+        (f == 'lowBelow' || f == 'highFrom') ? '$soil ในดิน: ${_fieldLabels[f]}' : '$label: ${_fieldLabels[f]}';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Gap(14),
         ToggleCard(
-          title: 'ใช้ธาตุ $label',
+          title: soil == label ? 'ใช้ธาตุ $label' : 'ใช้ธาตุ $soil (อัตราเป็น $label)',
           subtitle: 'ปิดถ้าตารางไม่ได้กำหนดธาตุนี้',
           value: _on[n]!,
           onChanged: (v) => setState(() {
@@ -318,7 +322,7 @@ class _RuleSetEditScreenState extends State<RuleSetEditScreen> {
                 key: Key('${n.name}-$f'),
                 controller: _c['${n.name}-$f'],
                 keyboardType: _numKeyboard,
-                decoration: InputDecoration(labelText: '$label: ${_fieldLabels[f]}'),
+                decoration: InputDecoration(labelText: fieldLabel(f)),
               ),
             ),
       ],
@@ -504,12 +508,12 @@ class FertilizerScreen extends StatelessWidget {
             child: Row(children: [
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${nutrientLabel(n.nutrient)} ${n.measured.toStringAsFixed(0)} mg/kg', style: TS.h3),
+                  Text('${soilLabel(n.nutrient)} ${n.measured.toStringAsFixed(0)} mg/kg', style: TS.h3),
                   const Gap(4),
                   Align(alignment: Alignment.centerLeft, child: Pill(levelLabel(n.level), tone: _levelTone(n.level), small: true)),
                 ]),
               ),
-              Text('${n.ratePerRai.toStringAsFixed(1)} กก./ไร่', style: TS.small),
+              Text('${n.ratePerRai.toStringAsFixed(1)} กก. ${nutrientLabel(n.nutrient)}/ไร่', style: TS.small),
             ]),
           ),
         const SectionHeader('ปุ๋ยเดี่ยวที่ควรใส่'),

@@ -37,7 +37,12 @@ void main() {
     expect(find.text('ยืนยันโดย ดร.ทดสอบ'), findsOneWidget);
     expect(find.text('สูง'), findsOneWidget);
     expect(find.textContaining('6.5 กก./ไร่'), findsOneWidget);
-    expect(find.textContaining('3.0 กก./ไร่'), findsOneWidget);
+    expect(find.textContaining('3.0 กก. N/ไร่'), findsOneWidget);
+    // Soil readings are the element (P, K mg/kg); only rates are in oxide form.
+    expect(find.text('P 18 mg/kg'), findsOneWidget);
+    expect(find.text('K 56 mg/kg'), findsOneWidget);
+    expect(find.textContaining('4.0 กก. P₂O₅/ไร่'), findsOneWidget);
+    expect(find.textContaining('P₂O₅ 18'), findsNothing);
     expect(find.textContaining('ต้นทุนรวม'), findsOneWidget);
     expect(find.text('ต้นทุนรวม —'), findsNothing);
   });

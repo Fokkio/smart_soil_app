@@ -6,6 +6,14 @@ String nutrientLabel(Nutrient n) => switch (n) {
       Nutrient.k => 'K₂O',
     };
 
+/// Label for the soil measurement (mg/kg of the element, as the probe reports it).
+/// Rates use [nutrientLabel] (oxide form, P₂O₅ / K₂O) — don't mix the two.
+String soilLabel(Nutrient n) => switch (n) {
+      Nutrient.n => 'N',
+      Nutrient.p => 'P',
+      Nutrient.k => 'K',
+    };
+
 enum NutrientLevel { low, medium, high }
 
 String levelLabel(NutrientLevel l) => switch (l) {

@@ -47,7 +47,8 @@ class NutrientRule {
   /// Thai message for the first problem, or null when valid.
   String? validate() {
     for (final x in [lowBelow, highFrom, rateLow, rateMedium, rateHigh]) {
-      if (x.isNaN || x < 0) return 'ค่าต้องไม่ติดลบ';
+      // isFinite also rejects NaN and "Infinity" (double.tryParse accepts it).
+      if (!x.isFinite || x < 0) return 'ค่าต้องไม่ติดลบ';
     }
     if (lowBelow >= highFrom) {
       return 'เกณฑ์ "ต่ำกว่า" ต้องน้อยกว่าเกณฑ์ "สูงตั้งแต่"';

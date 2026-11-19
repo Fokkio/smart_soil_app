@@ -20,6 +20,19 @@ void main() {
     expect(n.rateFor(NutrientLevel.medium), 6);
   });
 
+  test('validate rejects infinity (double.tryParse accepts "Infinity")', () {
+    expect(
+        NutrientRule(
+                nutrient: Nutrient.n,
+                lowBelow: 1,
+                highFrom: double.tryParse('Infinity')!,
+                rateLow: 1,
+                rateMedium: 1,
+                rateHigh: 1)
+            .validate(),
+        'ค่าต้องไม่ติดลบ');
+  });
+
   test('validate rejects negatives and inverted thresholds', () {
     expect(n.validate(), isNull);
     expect(

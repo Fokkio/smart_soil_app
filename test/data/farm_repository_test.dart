@@ -46,6 +46,8 @@ void main() {
     expect(repo.plotStatus(SeedIds.plotA), SoilStatus.watch);
     expect(repo.plotStatus(SeedIds.plotB), SoilStatus.normal);
     expect(store.saveCount, 1);
+    expect(repo.farm(SeedIds.farmLab)!.caretaker, 'ทีมโครงการ');
+    expect(repo.farms.every((f) => !f.caretaker.contains('ผู้ดูแล:')), isTrue);
     final again = await FarmRepository.open(store, seed: (_) => StoreSnapshot.empty());
     expect(again.farms, hasLength(3));
   });

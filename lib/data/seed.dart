@@ -14,6 +14,10 @@ abstract final class SeedIds {
 const _farmIds = [SeedIds.farmMsu, SeedIds.farmLab, SeedIds.farm2];
 const _plotIds = [SeedIds.plotA, SeedIds.plotB, SeedIds.plotC];
 
+/// Plain caretaker names matching CreateFarmScreen's picker options
+/// (Mock.farms[i].caretaker is a pre-formatted display line, not a name).
+const _caretakers = ['เจ้าหน้าที่ฟาร์ม (ผู้ดูแลหลัก)', 'ทีมโครงการ', 'เจ้าหน้าที่ฟาร์ม (ผู้ดูแลหลัก)'];
+
 StoreSnapshot seedFromMock(DateTime now) {
   return StoreSnapshot(
     farms: [
@@ -21,7 +25,7 @@ StoreSnapshot seedFromMock(DateTime now) {
         FarmRecord(
           id: _farmIds[i],
           name: Mock.farms[i].name,
-          caretaker: Mock.farms[i].caretaker,
+          caretaker: _caretakers[i],
           location: 'อ.กันทรวิชัย จ.มหาสารคาม',
           note: '',
           notify: true,

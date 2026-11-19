@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'farm_store.dart';
+import 'fertilizer.dart';
 import 'mock_data.dart';
 import 'models.dart';
 
@@ -76,6 +77,13 @@ class FarmRepository extends ChangeNotifier {
   SoilStatus farmStatus(String farmId) =>
       worstStatus(plotsOf(farmId).map((p) => plotStatus(p.id)));
 
+  List<CropRuleSet> get ruleSets => List.unmodifiable(
+      [..._state.ruleSets]..sort((a, b) => a.crop.compareTo(b.crop)));
+
+  CropRuleSet? ruleSetFor(String crop) => _findRuleSet(_state, crop);
+
+  FertilizerPrices get prices => _state.prices;
+
   // ---- mutations ----
 
   Future<FarmRecord> addFarm({
@@ -96,7 +104,7 @@ class FarmRepository extends ChangeNotifier {
           notify: notify,
           updatedAt: _clock(),
         );
-        await _commit(StoreSnapshot(
+        await _commit(_state.copyWith(
           farms: [..._state.farms, farm],
           plots: _state.plots,
           rounds: _state.rounds,
@@ -110,7 +118,7 @@ class FarmRepository extends ChangeNotifier {
         }
         final updated =
             farm.copyWith(name: _requireName(farm.name), updatedAt: _clock());
-        await _commit(StoreSnapshot(
+        await _commit(_state.copyWith(
           farms: [for (final f in _state.farms) f.id == farm.id ? updated : f],
           plots: _state.plots,
           rounds: _state.rounds,
@@ -123,7 +131,7 @@ class FarmRepository extends ChangeNotifier {
           for (final p in _state.plots)
             if (p.farmId == id) p.id
         };
-        await _commit(StoreSnapshot(
+        await _commit(_state.copyWith(
           farms: [for (final f in _state.farms) if (f.id != id) f],
           plots: [for (final p in _state.plots) if (p.farmId != id) p],
           rounds: [
@@ -156,7 +164,7 @@ class FarmRepository extends ChangeNotifier {
           archived: false,
           createdAt: now,
         );
-        await _commit(StoreSnapshot(
+        await _commit(_state.copyWith(
           farms: _touch(_state.farms, farmId, now),
           plots: [..._state.plots, plot],
           rounds: _state.rounds,
@@ -174,7 +182,7 @@ class FarmRepository extends ChangeNotifier {
         final n = _requireName(plot.name);
         _requireBoundary(plot.boundary);
         final updated = plot.copyWith(name: n);
-        await _commit(StoreSnapshot(
+        await _commit(_state.copyWith(
           farms: _touch(_state.farms, plot.farmId, _clock()),
           plots: [for (final p in _state.plots) p.id == plot.id ? updated : p],
           rounds: _state.rounds,
@@ -184,7 +192,7 @@ class FarmRepository extends ChangeNotifier {
   Future<void> setPlotArchived(String id, bool archived) => _enqueue(() async {
         final existing = _findPlot(_state, id);
         if (existing == null) throw StateError('Plot not found: $id');
-        await _commit(StoreSnapshot(
+        await _commit(_state.copyWith(
           farms: _touch(_state.farms, existing.farmId, _clock()),
           plots: [
             for (final p in _state.plots)
@@ -196,7 +204,7 @@ class FarmRepository extends ChangeNotifier {
 
   Future<void> deletePlot(String id) => _enqueue(() async {
         if (_findPlot(_state, id) == null) throw StateError('Plot not found: $id');
-        await _commit(StoreSnapshot(
+        await _commit(_state.copyWith(
           farms: _state.farms,
           plots: [for (final p in _state.plots) if (p.id != id) p],
           rounds: [for (final r in _state.rounds) if (r.plotId != id) r],
@@ -219,12 +227,67 @@ class FarmRepository extends ChangeNotifier {
           takenAt: takenAt ?? now,
           points: List.unmodifiable(points),
         );
-        await _commit(StoreSnapshot(
+        await _commit(_state.copyWith(
           farms: _touch(_state.farms, plot.farmId, now),
           plots: _state.plots,
           rounds: [..._state.rounds, round],
         ));
         return round;
+      });
+
+  /// Upsert by crop. Always stored unconfirmed: any edit needs re-confirmation.
+  Future<void> saveRuleSet(CropRuleSet set) => _enqueue(() async {
+        final crop = set.crop.trim();
+        if (crop.isEmpty) throw ArgumentError('กรุณาเลือกชนิดพืช');
+        final seen = <Nutrient>{};
+        for (final r in set.rules) {
+          final msg = r.validate();
+          if (msg != null) throw ArgumentError(msg);
+          if (!seen.add(r.nutrient)) throw ArgumentError('ธาตุซ้ำในตาราง');
+        }
+        final saved = set.copyWith(
+          crop: crop,
+          source: set.source.trim(),
+          confirmedBy: '',
+          clearConfirmedAt: true,
+        );
+        final exists = _findRuleSet(_state, crop) != null;
+        await _commit(_state.copyWith(
+          ruleSets: exists
+              ? [for (final r in _state.ruleSets) r.crop == crop ? saved : r]
+              : [..._state.ruleSets, saved],
+        ));
+      });
+
+  Future<void> confirmRuleSet(String crop, String expertName) =>
+      _enqueue(() async {
+        final existing = _findRuleSet(_state, crop);
+        if (existing == null) throw StateError('Rule set not found: $crop');
+        final name = expertName.trim();
+        if (name.isEmpty) throw ArgumentError('กรุณาใส่ชื่อผู้เชี่ยวชาญ');
+        final confirmed = existing.copyWith(
+          confirmedBy: name,
+          confirmedAt: _clock(),
+        );
+        await _commit(_state.copyWith(ruleSets: [
+          for (final r in _state.ruleSets) r.crop == crop ? confirmed : r
+        ]));
+      });
+
+  Future<void> deleteRuleSet(String crop) => _enqueue(() async {
+        if (_findRuleSet(_state, crop) == null) {
+          throw StateError('Rule set not found: $crop');
+        }
+        await _commit(_state.copyWith(
+          ruleSets: [for (final r in _state.ruleSets) if (r.crop != crop) r],
+        ));
+      });
+
+  Future<void> setPrices(FertilizerPrices p) => _enqueue(() async {
+        for (final v in [p.urea, p.tsp, p.mop]) {
+          if (!v.isFinite || v < 0) throw ArgumentError('ราคาต้องไม่ติดลบ');
+        }
+        await _commit(_state.copyWith(prices: p));
       });
 
   // ---- internals ----
@@ -258,6 +321,13 @@ class FarmRepository extends ChangeNotifier {
     if (b.length < 3) {
       throw ArgumentError.value(b, 'boundary', 'needs at least 3 points');
     }
+  }
+
+  static CropRuleSet? _findRuleSet(StoreSnapshot s, String crop) {
+    for (final r in s.ruleSets) {
+      if (r.crop == crop) return r;
+    }
+    return null;
   }
 
   static FarmRecord? _findFarm(StoreSnapshot s, String id) {
